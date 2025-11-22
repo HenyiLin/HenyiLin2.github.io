@@ -1,0 +1,722 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>放射治療物理原理視覺化：X-Ray vs. 質子</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --bg-color: #f4f7f6;
+            --text-color: #333;
+            --accent-blue: #3498db;
+            --accent-red: #e74c3c;
+            --accent-green: #2ecc71;
+            --accent-orange: #e67e22;
+            --panel-bg: #ffffff;
+        }
+
+        body {
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            box-sizing: border-box;
+            min-width: 1100px;
+            overflow-x: auto;
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 15px;
+            color: #2c3e50;
+            font-size: 1.5rem;
+        }
+
+        .container {
+            display: flex;
+            flex: 1;
+            gap: 20px;
+            min-height: 0;
+        }
+
+        .sidebar {
+            flex: 1;
+            background: var(--panel-bg);
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+            min-width: 300px;
+        }
+
+        .theory-section h2, .control-section h2 {
+            color: #2c3e50;
+            border-bottom: 2px solid #eee;
+            padding-bottom: 8px;
+            margin-top: 0;
+            font-size: 1.2rem;
+        }
+
+        .theory-block {
+            margin-bottom: 15px;
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 0.9rem;
+        }
+
+        .xray-block { background-color: rgba(52, 152, 219, 0.1); border-left: 4px solid var(--accent-blue); }
+        .proton-block { background-color: rgba(231, 76, 60, 0.1); border-left: 4px solid var(--accent-red); }
+
+        .formula {
+            font-family: 'Times New Roman', serif;
+            font-style: italic;
+            background: rgba(255,255,255,0.7);
+            padding: 5px;
+            border-radius: 4px;
+            text-align: center;
+            margin: 5px 0;
+            font-weight: bold;
+            border: 1px solid #eee;
+        }
+
+        .control-section {
+            margin-top: auto;
+            padding-top: 15px;
+            border-top: 2px solid #eee;
+        }
+
+        .control-group {
+            margin-bottom: 15px;
+            padding: 10px;
+            background: #f9f9f9;
+            border-radius: 8px;
+        }
+
+        label {
+            font-weight: bold;
+            display: block;
+            font-size: 0.95rem;
+            margin-bottom: 5px;
+        }
+
+        input[type=range] {
+            width: 100%;
+            cursor: pointer;
+        }
+
+        .value-display {
+            float: right;
+            color: #666;
+            font-weight: bold;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        button {
+            flex: 1;
+            padding: 10px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background 0.2s;
+            color: white;
+        }
+
+        #btnStart { background-color: var(--accent-green); }
+        #btnStart:hover { background-color: #27ae60; }
+        #btnStart.paused { background-color: var(--accent-orange); }
+        
+        #btnReset { background-color: #95a5a6; }
+        #btnReset:hover { background-color: #7f8c8d; }
+
+        #btnCalculate { 
+            background-color: #34495e; 
+            margin-top: 0;
+            width: fit-content;
+            padding: 8px 20px;
+            font-size: 0.9rem;
+        }
+        #btnCalculate:hover { background-color: #2c3e50; }
+
+        .visualization-main {
+            flex: 2;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            overflow-y: auto; 
+            padding-right: 5px;
+        }
+
+        .vis-panel {
+            background: var(--panel-bg);
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            flex-shrink: 0; 
+        }
+
+        .text-content p {
+            line-height: 1.6;
+            color: #444;
+            margin-bottom: 10px;
+            text-align: justify;
+        }
+
+        #phantomContainer {
+            width: 100%;
+            height: 220px;
+            position: relative;
+            background: #e0e0e0;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 2px solid #bdc3c7;
+            z-index: 0;
+        }
+
+        .tumor {
+            position: absolute;
+            top: 50%;
+            width: 50px;
+            height: 50px;
+            background-color: #8e44ad;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            box-shadow: 0 0 15px #8e44ad;
+            z-index: 5;
+            transition: left 0.1s linear, transform 0.3s ease-out, opacity 0.3s ease-out;
+        }
+        .tumor::after {
+            content: "Tumor";
+            position: absolute;
+            top: -20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #8e44ad;
+            font-weight: bold;
+            font-size: 0.8rem;
+        }
+
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+        
+        #doseCanvas { z-index: 1; }
+        #particleCanvas { z-index: 10; }
+
+        .chart-container {
+            flex: 1;
+            position: relative;
+            min-height: 250px;
+        }
+
+        .legend {
+            display: flex;
+            gap: 15px;
+            font-size: 0.9rem;
+            margin-bottom: 5px;
+        }
+        .dot { width: 12px; height: 12px; display: inline-block; margin-right: 5px; border-radius: 50%; }
+
+        .author-footer {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background-color: rgba(255, 255, 255, 0.9);
+            padding: 8px 16px;
+            border-radius: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.15);
+            font-weight: bold;
+            color: #555;
+            font-size: 0.9rem;
+            z-index: 9999;
+            border: 1px solid #ddd;
+            pointer-events: none;
+        }
+
+    </style>
+</head>
+<body>
+
+    <h1>放射治療物理原理視覺化：X-Ray vs. 質子</h1>
+
+    <div class="container">
+        <div class="sidebar">
+            
+            <div class="theory-section">
+                <h2>理論基礎與公式</h2>
+                
+                <div class="theory-block xray-block">
+                    <strong>傳統 X 光 (Photon)</strong>
+                    <p>能量隨深度呈指數衰減，受距離平方反比影響。</p>
+                    <div class="formula">I(x) = I<sub>0</sub> · e<sup>-μx</sup></div>
+                    <div class="formula">I ∝ 1 / r<sup>2</sup></div>
+                </div>
+
+                <div class="theory-block proton-block">
+                    <strong>質子束 (Proton)</strong>
+                    <p>能量釋放率 (dE/dx) 與速度平方成反比。速度越慢，釋放能量越強，形成<b>布拉格峰</b>。</p>
+                    <div class="formula">Stopping Power ∝ 1/v<sup>2</sup></div>
+                    <div class="formula">Range ≈ a · E<sup>p</sup></div>
+                </div>
+            </div>
+
+            <div class="control-section">
+                <h2>互動模擬控制</h2>
+                
+                <div class="control-group" style="border-left: 4px solid #8e44ad;">
+                    <label>腫瘤深度 (Target) <span id="tumorVal" class="value-display">15.0 cm</span></label>
+                    <input type="range" id="tumorSlider" min="2" max="28" step="0.1" value="15.0">
+                </div>
+
+                <div class="control-group" style="border-left: 4px solid var(--accent-red);">
+                    <label>質子停止深度 (Bragg Peak) <span id="energyVal" class="value-display">15.0 cm</span></label>
+                    <input type="range" id="energySlider" min="2" max="28" step="0.1" value="15.0">
+                </div>
+
+                <div class="btn-group">
+                    <button id="btnStart">▶ 開始累積</button>
+                    <button id="btnReset">⟲ 重來</button>
+                </div>
+                <p style="font-size: 0.8rem; color: #7f8c8d; margin-top: 5px;">* 觀察質子變慢、變大、並在終點爆發。</p>
+            </div>
+        </div>
+
+        <div class="visualization-main">
+            
+            <div class="vis-panel">
+                <h3>1. 人體內射線傳播模擬</h3>
+                <div class="legend">
+                    <span><span class="dot" style="background: var(--accent-blue);"></span>X 光光子</span>
+                    <span><span class="dot" style="background: var(--accent-red);"></span>質子束</span>
+                    <span><span class="dot" style="background: #8e44ad;"></span>腫瘤</span>
+                </div>
+                
+                <div id="phantomContainer">
+                    <div id="tumorObj" class="tumor"></div>
+                    <canvas id="doseCanvas"></canvas>
+                    <canvas id="particleCanvas"></canvas>
+                    
+                    <div style="position: absolute; bottom: 0; width: 100%; height: 20px; display: flex; justify-content: space-between; padding: 0 5px; color: #666; font-size: 0.8rem; border-top: 1px solid #ccc;">
+                        <span>0cm</span><span>10cm</span><span>20cm</span><span>30cm</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="vis-panel">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                    <h3 style="margin:0;">2. 二維劑量深度分析圖 (Analysis)</h3>
+                    <button id="btnCalculate">📊 計算分析圖表</button>
+                </div>
+                
+                <div class="chart-container">
+                    <canvas id="doseChart"></canvas>
+                </div>
+            </div>
+
+            <div class="vis-panel text-content">
+                <h3>3. 過程</h3>
+                <p>之前上課對施政廷老師介紹的 Bragg Peak 印象深刻，想以此為主題進行動畫製作。由於製作前聽聞 Gemini 3.0 Pro 在許多評分標準都獲得壓倒性第一，因此選擇 Gemini 進行專案製作。</p>
+                <p>製作過程中，我並非直接要求 Gemini 直接「寫一個程式」，而是透過授課老師的講義章節為基礎，引導出基礎公式，並搭配周琳珊老師的兩次上課講義作為輔助資料。</p>
+                <p>過程中，我先要求 Gemini 解釋公式與指數衰減的差異，確認物理邏輯正確；版面出現後，我覺得看起來還不錯，所以只是微調並給予操作性的建議，最後加上視覺修正，讓動畫看起來更華麗。</p>
+            </div>
+
+            <div class="vis-panel text-content">
+                <h3>4. 心得</h3>
+                <p>透過這次加分作業，勾起了我以前學程式的回憶。以為讀醫學就再也用不到了，沒想到在 AI 大躍進的時代，雖然不得不接觸，卻也變得更容易上手。</p>
+                <p>其次，我也感受到有好的方向與好的敘述方式，才能得到理想的結果。過程中我一度想要放棄、妥協，「隨便啦，AI 這樣做好像也沒有不對」，可一旦放棄了堅持，很多東西都會變調，而我也將會成為 AI 的奴隸，而不是主導者；我想起近期看到的書《當部屬無法依指令做事》，實際運用書裡的溝通邏輯，也確實讓 Gemini 幫我寫出越來越接近我理想的網頁。</p>
+                <p>最後，我還是試著將產出的成品丟到 github 上生成網頁，雖然花了不少時間研究，但成功後還是滿開心的哈哈。雖然無法做到老師給我們當範本那個宇宙網頁，但能夠順利產出一個能夠互動的簡易網頁，我已經非常滿足。</p>
+            </div>
+
+        </div>
+    </div>
+
+    <div class="author-footer">醫學一 林恆毅</div>
+
+    <script>
+        const tumorSlider = document.getElementById('tumorSlider');
+        const energySlider = document.getElementById('energySlider');
+        const tumorValDisplay = document.getElementById('tumorVal');
+        const energyValDisplay = document.getElementById('energyVal');
+        const tumorObj = document.getElementById('tumorObj');
+        
+        const doseCanvas = document.getElementById('doseCanvas');
+        const particleCanvas = document.getElementById('particleCanvas');
+        const ctxDose = doseCanvas.getContext('2d');
+        const ctxParticle = particleCanvas.getContext('2d');
+        
+        const btnStart = document.getElementById('btnStart');
+        const btnReset = document.getElementById('btnReset');
+        const btnCalculate = document.getElementById('btnCalculate');
+
+        let isRunning = false;
+        let accumulationFactor = 0; 
+        const MAX_DEPTH_CM = 30;
+        
+        let protons = []; 
+        let explosions = []; 
+
+        class Proton {
+            constructor(targetPx) {
+                this.startX = 0;
+                this.targetX = targetPx;
+                this.totalDistance = targetPx; 
+                
+                this.x = 0;
+                this.y = particleCanvas.height * 0.75 + (Math.random() * 20 - 10); 
+                
+                this.initialSpeed = 12 + Math.random() * 4;
+                
+                this.dead = false;
+                this.trail = []; 
+                
+                this.currentRadius = 2;
+                this.currentOpacity = 0.2;
+            }
+
+            update() {
+                let distRemaining = this.targetX - this.x;
+                if (distRemaining < 0) distRemaining = 0;
+
+                let currentSpeed = Math.max(2, this.initialSpeed * Math.sqrt(distRemaining / this.totalDistance));
+                
+                this.x += currentSpeed;
+
+                let progress = this.x / this.targetX; 
+                let intensity = Math.pow(progress, 4); 
+
+                this.currentRadius = 2 + (5 * intensity);
+                this.currentOpacity = 0.2 + (0.8 * intensity);
+
+                this.trail.push({
+                    x: this.x, 
+                    y: this.y, 
+                    r: this.currentRadius,   
+                    a: this.currentOpacity   
+                });
+                if (this.trail.length > 8) this.trail.shift();
+
+                if (this.x >= this.targetX) {
+                    this.x = this.targetX;
+                    this.dead = true;
+                    createExplosion(this.x, this.y);
+                }
+            }
+
+            draw(ctx) {
+                for (let i = 0; i < this.trail.length; i++) {
+                    let point = this.trail[i];
+                    let trailAlpha = point.a * (i / this.trail.length) * 0.5;
+                    
+                    ctx.beginPath();
+                    ctx.arc(point.x, point.y, point.r * 0.8, 0, Math.PI * 2);
+                    ctx.fillStyle = `rgba(231, 76, 60, ${trailAlpha})`;
+                    ctx.fill();
+                }
+
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.currentRadius, 0, Math.PI * 2);
+                
+                let grad = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, this.currentRadius);
+                grad.addColorStop(0, `rgba(255, 255, 255, ${this.currentOpacity})`); 
+                grad.addColorStop(0.6, `rgba(231, 76, 60, ${this.currentOpacity})`);
+                grad.addColorStop(1, `rgba(231, 76, 60, 0)`);
+                
+                ctx.fillStyle = grad;
+                ctx.fill();
+            }
+        }
+
+        class Explosion {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.radius = 1;
+                this.maxRadius = 25 + Math.random() * 10;
+                this.alpha = 1.0;
+                this.dead = false;
+            }
+
+            update() {
+                this.radius += 3; 
+                this.alpha -= 0.08; 
+                if (this.alpha <= 0) this.dead = true;
+            }
+
+            draw(ctx) {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                const grad = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, this.radius);
+                grad.addColorStop(0, `rgba(255, 255, 200, ${this.alpha})`); 
+                grad.addColorStop(0.5, `rgba(255, 100, 50, ${this.alpha * 0.8})`); 
+                grad.addColorStop(1, `rgba(255, 0, 0, 0)`);
+                ctx.fillStyle = grad;
+                ctx.fill();
+            }
+        }
+
+        function createExplosion(x, y) {
+            explosions.push(new Explosion(x, y));
+        }
+
+        function resizeCanvas() {
+            const w = doseCanvas.parentNode.offsetWidth;
+            const h = doseCanvas.parentNode.offsetHeight;
+            doseCanvas.width = w;
+            doseCanvas.height = h;
+            particleCanvas.width = w;
+            particleCanvas.height = h;
+            drawStaticDose(); 
+        }
+        window.addEventListener('resize', resizeCanvas);
+
+        function updateState() {
+            tumorValDisplay.textContent = parseFloat(tumorSlider.value).toFixed(1) + " cm";
+            energyValDisplay.textContent = parseFloat(energySlider.value).toFixed(1) + " cm";
+            const tumorPercent = (tumorSlider.value / MAX_DEPTH_CM) * 100;
+            tumorObj.style.left = `${tumorPercent}%`;
+            
+            updateTumorHealth();
+            drawStaticDose();
+        }
+
+        function updateTumorHealth() {
+            const tumorLoc = parseFloat(tumorSlider.value);
+            const peakLoc = parseFloat(energySlider.value);
+
+            let protonPotential = getProtonDose(tumorLoc, peakLoc); 
+            let xrayPotential = getXrayDose(tumorLoc);
+
+            let currentTotalDose = (protonPotential + xrayPotential * 0.3) * accumulationFactor;
+
+            let scale = 1 - (currentTotalDose / 90);
+            
+            if (scale < 0) scale = 0;
+            if (scale > 1) scale = 1;
+
+            tumorObj.style.transform = `translate(-50%, -50%) scale(${scale})`;
+            tumorObj.style.opacity = `${0.6 * scale + 0.1}`;
+        }
+
+        function drawStaticDose() {
+            ctxDose.clearRect(0, 0, doseCanvas.width, doseCanvas.height);
+            
+            if (accumulationFactor <= 0) return;
+
+            const w = doseCanvas.width;
+            const h = doseCanvas.height;
+            const peakCm = parseFloat(energySlider.value);
+            const peakPx = (peakCm / MAX_DEPTH_CM) * w;
+
+            const xrayGrad = ctxDose.createLinearGradient(0, 0, w, 0);
+            xrayGrad.addColorStop(0, `rgba(52, 152, 219, ${0.8 * accumulationFactor})`); 
+            xrayGrad.addColorStop(1, `rgba(52, 152, 219, ${0.1 * accumulationFactor})`);
+            ctxDose.fillStyle = xrayGrad;
+            ctxDose.fillRect(0, 20, w, h/2 - 40);
+
+            const protonGrad = ctxDose.createLinearGradient(0, 0, w, 0);
+            let peakRatio = peakPx / w;
+            if (peakRatio > 1) peakRatio = 1; 
+            if (peakRatio < 0) peakRatio = 0;
+
+            let rampStart = Math.max(0, peakRatio - 0.05);
+            let falloffEnd = Math.min(1, peakRatio + 0.01);
+
+            protonGrad.addColorStop(0, `rgba(231, 76, 60, ${0.2 * accumulationFactor})`); 
+            protonGrad.addColorStop(rampStart, `rgba(231, 76, 60, ${0.3 * accumulationFactor})`);
+            protonGrad.addColorStop(peakRatio, `rgba(231, 76, 60, ${0.9 * accumulationFactor})`);
+            protonGrad.addColorStop(falloffEnd, `rgba(231, 76, 60, 0)`);
+
+            ctxDose.fillStyle = protonGrad;
+            ctxDose.fillRect(0, h/2 + 20, w, h/2 - 40);
+
+            if(accumulationFactor > 0.05) {
+                ctxDose.beginPath();
+                ctxDose.moveTo(peakPx, h/2 + 15);
+                ctxDose.lineTo(peakPx, h - 15);
+                ctxDose.strokeStyle = `rgba(231, 76, 60, 0.5)`;
+                ctxDose.lineWidth = 1;
+                ctxDose.setLineDash([5, 3]);
+                ctxDose.stroke();
+            }
+        }
+
+        function animateLoop() {
+            if (!isRunning) return;
+
+            accumulationFactor += 0.002;
+            if (accumulationFactor >= 1.0) {
+                accumulationFactor = 1.0;
+                isRunning = false;
+                updateButtonState();
+            }
+
+            drawStaticDose();
+            updateTumorHealth(); 
+
+            ctxParticle.clearRect(0, 0, particleCanvas.width, particleCanvas.height);
+
+            const w = particleCanvas.width;
+            const peakCm = parseFloat(energySlider.value);
+            const targetPx = (peakCm / MAX_DEPTH_CM) * w;
+
+            if (Math.random() < 0.35) { 
+                protons.push(new Proton(targetPx));
+            }
+
+            for (let i = protons.length - 1; i >= 0; i--) {
+                let p = protons[i];
+                p.update();
+                p.draw(ctxParticle);
+                if (p.dead) protons.splice(i, 1);
+            }
+
+            for (let i = explosions.length - 1; i >= 0; i--) {
+                let e = explosions[i];
+                e.update();
+                e.draw(ctxParticle);
+                if (e.dead) explosions.splice(i, 1);
+            }
+
+            if (isRunning) {
+                requestAnimationFrame(animateLoop);
+            } else {
+                ctxParticle.clearRect(0, 0, particleCanvas.width, particleCanvas.height);
+                protons = [];
+                explosions = [];
+            }
+        }
+
+        function updateButtonState() {
+            if (isRunning) {
+                btnStart.textContent = "⏸ 暫停";
+                btnStart.classList.add('paused');
+            } else {
+                btnStart.textContent = accumulationFactor >= 1.0 ? "完成 (已滿)" : "▶ 繼續";
+                if(accumulationFactor === 0) btnStart.textContent = "▶ 開始累積";
+                btnStart.classList.remove('paused');
+            }
+        }
+
+        btnStart.addEventListener('click', () => {
+            if (accumulationFactor >= 1.0) return;
+            isRunning = !isRunning;
+            updateButtonState();
+            if (isRunning) animateLoop();
+        });
+
+        btnReset.addEventListener('click', () => {
+            isRunning = false;
+            accumulationFactor = 0;
+            protons = [];
+            explosions = [];
+            ctxParticle.clearRect(0, 0, particleCanvas.width, particleCanvas.height);
+            updateButtonState();
+            updateState(); 
+            doseChart.data.datasets[0].data = [];
+            doseChart.data.datasets[1].data = [];
+            doseChart.update();
+        });
+
+        tumorSlider.addEventListener('input', updateState);
+        energySlider.addEventListener('input', updateState);
+
+        function getXrayDose(depth) {
+            let buildup = depth < 1.5 ? (0.6 + (depth/1.5)*0.4) : 1;
+            let decay = Math.exp(-0.06 * (depth - 1.5));
+            if (depth < 1.5) decay = 1;
+            let invSquare = Math.pow(100 / (100 + depth), 2);
+            return buildup * decay * invSquare * 100;
+        }
+
+        function getProtonDose(depth, peakDepth) {
+            const baseDose = 30;
+            const sigma = 0.6; 
+            const peakHeight = 70;
+            
+            let gaussian = peakHeight * Math.exp(-Math.pow(depth - peakDepth, 2) / (2 * sigma * sigma));
+            
+            if (depth > peakDepth + sigma * 3) gaussian = 0;
+            if (depth > peakDepth + 0.5) gaussian *= 0.1; 
+
+            let slope = (depth / peakDepth) * 10;
+            if (depth > peakDepth) slope = 10;
+
+            let total = baseDose + slope + gaussian;
+            if (depth > peakDepth + 1) return 0;
+            return total;
+        }
+
+        const ctxChart = document.getElementById('doseChart').getContext('2d');
+        const chartLabels = [];
+        for(let i=0; i<=MAX_DEPTH_CM; i+=0.1) chartLabels.push(i.toFixed(1));
+
+        const doseChart = new Chart(ctxChart, {
+            type: 'line',
+            data: {
+                labels: chartLabels,
+                datasets: [
+                    {
+                        label: '傳統 X 光',
+                        data: [],
+                        borderColor: '#3498db',
+                        borderWidth: 2,
+                        pointRadius: 0,
+                        tension: 0.4
+                    },
+                    {
+                        label: '質子束 (布拉格峰)',
+                        data: [],
+                        borderColor: '#e74c3c',
+                        borderWidth: 2,
+                        pointRadius: 0,
+                        tension: 0.1
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: { duration: 1000 },
+                scales: {
+                    x: { title: { display: true, text: '深度 (cm)' } },
+                    y: { title: { display: true, text: '相對劑量 (%)' }, min: 0, max: 110 }
+                }
+            }
+        });
+
+        btnCalculate.addEventListener('click', () => {
+            const peakDepth = parseFloat(energySlider.value);
+            const xrayData = chartLabels.map(d => getXrayDose(parseFloat(d)));
+            const protonData = chartLabels.map(d => getProtonDose(parseFloat(d), peakDepth));
+
+            doseChart.data.datasets[0].data = xrayData;
+            doseChart.data.datasets[1].data = protonData;
+            doseChart.update();
+        });
+
+        resizeCanvas();
+        updateState();
+
+    </script>
+</body>
+</html>
