@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>放射治療物理原理視覺化：光子 vs. 質子 (固定版面)</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --bg-color: #f4f7f6;
+            --text-color: #333;
+            --accent-blue: #3498db;
+            --accent-red: #e74c3c;
+            --accent-green: #2ecc71;
+            --accent-orange: #e67e22;
+            --panel-bg: #ffffff;
+        }
+
+        body {
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            box-sizing: border-box;
+            
+            /* --- 方法二：強制固定寬度，防止跑版 --- */
+            min-width: 1100px; /* 強制網頁至少 1100px 寬 */
+            overflow-x: auto;  /* 寬度不足時顯示左右捲軸 */
+            /* ----------------------------------- */
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 15px;
+            color: #2c3e50;
+            font-size: 1.5rem;
+        }
+
+        .container {
+            display: flex;
+            flex: 1;
+            gap: 20px;
+            min-height: 0;
+        }
+
+        /* 左側面板 */
+        .sidebar {
+            flex: 1;
+            background: var(--panel-bg);
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+            min-width: 300px;
+        }
+
+        .theory-section h2, .control-section h2 {
+            color: #2c3e50;
+            border-bottom: 2px solid #eee;
+            padding-bottom: 8px;
+            margin-top: 0;
+            font-size: 1.2rem;
+        }
+
+        .theory-block {
+            margin-bottom: 15px;
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 0.9rem;
+        }
+
+        .xray-block { background-color: rgba(52, 152, 219, 0.1); border-left: 4px solid var(--accent-blue); }
+        .proton-block { background-color: rgba(231, 76, 60, 0.1); border-left: 4px solid var(--accent-red); }
+
+        .formula {
+            font-family: 'Times New Roman', serif;
+            font-style: italic;
+            background: rgba(255,255,255,0.7);
+            padding: 5px;
+            border-radius: 4px;
+            text-align: center;
+            margin: 5px 0;
+            font-weight: bold;
+        }
+
+        /* 控制區 */
+        .control-section {
+            margin-top: auto;
+            padding-top: 15px;
+            border-top: 2px solid #eee;
+        }
+
+        .control-group {
+            margin-bottom: 15px;
+            padding: 10px;
+            background: #f9f9f9;
+            border-radius: 8px;
+        }
+
+        label {
+            font-weight: bold;
+            display: block;
+            font-size: 0.95rem;
+            margin-bottom: 5px;
+        }
+
+        input[type=range] {
+            width: 100%;
+            cursor: pointer;
+        }
+
+        .value-display {
+            float: right;
+            color: #666;
+            font-weight: bold;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        button {
+            flex: 1;
+            padding: 10px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background 0.2s;
+            color: white;
+        }
+
+        #btnStart { background-color: var(--accent-green); }
+        #btnStart:hover { background-color: #27ae60; }
+        #btnStart.paused { background-color: var(--accent-orange); }
+        
+        #btnReset { background-color: #95a5a6; }
+        #btnReset:hover { background-color: #7f8c8d; }
+
+        #btnCalculate { 
+            background-color: #34495e; 
+            margin-top: 10px;
+            width: 100%;
+        }
+        #btnCalculate:hover { background-color: #2c3e50; }
+
+        /* 右側面板 */
+        .visualization-main {
+            flex: 2;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .vis-panel {
+            background: var(--panel-bg);
+            padding: 15px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+
+        #phantomContainer {
+            width: 100%;
+            height: 220px;
+            position: relative;
+            background: #e0e0e0;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 2px solid #bdc3c7;
+        }
+
+        /* 腫瘤樣式 */
+        .tumor {
+            position: absolute;
+            top: 50%;
+            width: 50px;
+            height: 50px;
+            background-color: #8e44ad;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            box-shadow: 0 0 15px #8e44ad;
+            z-index: 1;
+            transition: left 0.1s linear;
+        }
+        .tumor::after {
+            content: "Tumor";
+            position: absolute;
+            top: -20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #8e44ad;
+            font-weight: bold;
+            font-size: 0.8rem;
+        }
+
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        .chart-container {
+            flex: 1;
+            position: relative;
+            min-height: 200px;
+        }
+
+        .legend {
+            display: flex;
+            gap: 15px;
+            font-size: 0.9rem;
+            margin-bottom: 5px;
+        }
+        .dot { width: 12px; height: 12px; display: inline-block; margin-right: 5px; border-radius: 50%; }
+
+        /* 作者標籤樣式 */
+        .author-footer {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background-color: rgba(255, 255, 255, 0.9);
+            padding: 8px 16px;
+            border-radius: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.15);
+            font-weight: bold;
+            color: #555;
+            font-size: 0.9rem;
+            z-index: 9999;
+            border: 1px solid #ddd;
+            pointer-events: none; /* 讓滑鼠可以穿透點擊下方的東西 */
+        }
+
+    </style>
+</head>
+<body>
+
+    <h1>放射治療物理原理視覺化：光子 vs. 質子</h1>
+
+    <div class="container">
+        <div class="sidebar">
+            
+            <div class="theory-section">
+                <h2>理論基礎與公式</h2>
+                
+                <div class="theory-block xray-block">
+                    <strong>傳統 X 光 (Photon)</strong>
+                    <p>能量隨深度呈指數衰減，且受距離平方反比定律影響。</p>
+                    <div class="formula">I(x) = I<sub>0</sub> · e<sup>-μx</sup></div>
+                    <div class="formula">I ∝ 1 / r<sup>2</sup></div>
+                </div>
+
+                <div class="theory-block proton-block">
+                    <strong>質子束 (Proton)</strong>
+                    <p>利用迴旋加速器給予質子動能。質子進入人體後速度變慢，在停止前釋放最大能量 (布拉格峰)。</p>
+                    <div class="formula">E<sub>k</sub> ∝ v<sup>2</sup> (加速)</div>
+                    <div class="formula">Stopping Power ∝ 1/v<sup>2</sup></div>
+                </div>
+            </div>
+
+            <div class="control-section">
+                <h2>互動模擬控制</h2>
+                
+                <div class="control-group" style="border-left: 4px solid #8e44ad;">
+                    <label>腫瘤深度 (Target Depth) <span id="tumorVal" class="value-display">15.0 cm</span></label>
+                    <input type="range" id="tumorSlider" min="2" max="28" step="0.1" value="15.0">
+                </div>
+
+                <div class="control-group" style="border-left: 4px solid var(--accent-red);">
+                    <label>質子停止深度 (Bragg Peak) <span id="energyVal" class="value-display">15.0 cm</span></label>
+                    <input type="range" id="energySlider" min="2" max="28" step="0.1" value="15.0">
+                </div>
+
+                <div class="btn-group">
+                    <button id="btnStart">▶ 開始累積</button>
+                    <button id="btnReset">⟲ 重來</button>
+                </div>
+                <p style="font-size: 0.8rem; color: #7f8c8d; margin-top: 5px;">* 按下開始後，觀察射線如何累積劑量。</p>
+            </div>
+        </div>
+
+        <div class="visualization-main">
+            
+            <div class="vis-panel">
+                <h3>1. 人體內射線傳播模擬 (即時運算)</h3>
+                <div class="legend">
+                    <span><span class="dot" style="background: var(--accent-blue);"></span>X 光 (Photon)</span>
+                    <span><span class="dot" style="background: var(--accent-red);"></span>質子 (Proton)</span>
+                    <span><span class="dot" style="background: #8e44ad;"></span>腫瘤</span>
+                </div>
+                
+                <div id="phantomContainer">
+                    <div id="tumorObj" class="tumor"></div>
+                    <canvas id="beamCanvas"></canvas>
+                    
+                    <div style="position: absolute; bottom: 0; width: 100%; height: 20px; display: flex; justify-content: space-between; padding: 0 5px; color: #666; font-size: 0.8rem; border-top: 1px solid #ccc;">
+                        <span>0cm</span><span>10cm</span><span>20cm</span><span>30cm</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="vis-panel" style="flex:1;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                    <h3 style="margin:0;">2. 二維劑量深度分析圖 (Analysis)</h3>
+                    <button id="btnCalculate" style="width: auto; padding: 5px 15px;">📊 計算分析圖表</button>
+                </div>
+                
+                <div class="chart-container">
+                    <canvas id="doseChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="author-footer">醫學一 林恆毅</div>
+
+    <script>
+        // --- 變數與 DOM ---
+        const tumorSlider = document.getElementById('tumorSlider');
+        const energySlider = document.getElementById('energySlider');
+        const tumorValDisplay = document.getElementById('tumorVal');
+        const energyValDisplay = document.getElementById('energyVal');
+        const tumorObj = document.getElementById('tumorObj');
+        const beamCanvas = document.getElementById('beamCanvas');
+        const ctxBeam = beamCanvas.getContext('2d');
+        
+        const btnStart = document.getElementById('btnStart');
+        const btnReset = document.getElementById('btnReset');
+        const btnCalculate = document.getElementById('btnCalculate');
+
+        let animationId;
+        let isRunning = false;
+        let accumulationFactor = 0; // 模擬劑量累積程度 (0 ~ 1.0)
+        
+        const MAX_DEPTH_CM = 30;
+        
+        // --- 初始化畫布尺寸 ---
+        function resizeCanvas() {
+            beamCanvas.width = beamCanvas.offsetWidth;
+            beamCanvas.height = beamCanvas.offsetHeight;
+            drawSimulation(); // 重繪
+        }
+        window.addEventListener('resize', resizeCanvas);
+
+        // --- 核心邏輯：更新狀態 ---
+        
+        function updateState() {
+            // 更新文字數值
+            tumorValDisplay.textContent = parseFloat(tumorSlider.value).toFixed(1) + " cm";
+            energyValDisplay.textContent = parseFloat(energySlider.value).toFixed(1) + " cm";
+
+            // 更新腫瘤位置 (CSS left %)
+            const tumorPercent = (tumorSlider.value / MAX_DEPTH_CM) * 100;
+            tumorObj.style.left = `${tumorPercent}%`;
+
+            // 重繪射線
+            drawSimulation();
+        }
+
+        // --- 繪圖邏輯：模擬射線 ---
+        function drawSimulation() {
+            ctxBeam.clearRect(0, 0, beamCanvas.width, beamCanvas.height);
+            
+            if (accumulationFactor <= 0) return;
+
+            const w = beamCanvas.width;
+            const h = beamCanvas.height;
+            
+            // 1. 繪製 X 光 (上半部)
+            const xrayGradient = ctxBeam.createLinearGradient(0, 0, w, 0);
+            xrayGradient.addColorStop(0, `rgba(52, 152, 219, ${0.8 * accumulationFactor})`); 
+            xrayGradient.addColorStop(0.3, `rgba(52, 152, 219, ${0.5 * accumulationFactor})`);
+            xrayGradient.addColorStop(1, `rgba(52, 152, 219, ${0.2 * accumulationFactor})`);
+            
+            ctxBeam.fillStyle = xrayGradient;
+            ctxBeam.fillRect(0, 20, w, h/2 - 40);
+
+            // 2. 繪製 質子束 (下半部) - 精準對齊版
+            const peakCm = parseFloat(energySlider.value);
+            const peakPx = (peakCm / MAX_DEPTH_CM) * w;
+            
+            const protonGradient = ctxBeam.createLinearGradient(0, 0, w, 0); 
+            
+            let peakRatio = peakPx / w;
+            if (peakRatio > 1) peakRatio = 1;
+            if (peakRatio < 0) peakRatio = 0;
+
+            let rampStart = Math.max(0, peakRatio - 0.05);
+            let falloffEnd = Math.min(1, peakRatio + 0.01);
+
+            // 設定顏色節點 (Color Stops)
+            protonGradient.addColorStop(0, `rgba(231, 76, 60, ${0.3 * accumulationFactor})`); 
+            protonGradient.addColorStop(rampStart, `rgba(231, 76, 60, ${0.4 * accumulationFactor})`);
+            // *** 關鍵：峰值 (Bragg Peak) 對齊 ***
+            protonGradient.addColorStop(peakRatio, `rgba(231, 76, 60, ${1.0 * accumulationFactor})`);
+            // 截止點
+            protonGradient.addColorStop(falloffEnd, `rgba(231, 76, 60, 0)`);
+
+            ctxBeam.fillStyle = protonGradient;
+            ctxBeam.fillRect(0, h/2 + 20, w, h/2 - 40);
+
+            // 繪製虛線 (停止深度標記)
+            if (accumulationFactor > 0.1) {
+                ctxBeam.beginPath();
+                ctxBeam.moveTo(peakPx, h/2 + 15);
+                ctxBeam.lineTo(peakPx, h - 15);
+                ctxBeam.strokeStyle = `rgba(255, 0, 0, ${0.8 * accumulationFactor})`;
+                ctxBeam.lineWidth = 2;
+                ctxBeam.setLineDash([5, 3]);
+                ctxBeam.stroke();
+            }
+        }
+
+        // --- 動畫循環 ---
+        function animateLoop() {
+            if (!isRunning) return;
+
+            accumulationFactor += 0.005; 
+            if (accumulationFactor >= 1.0) {
+                accumulationFactor = 1.0;
+                isRunning = false; 
+                updateButtonState();
+            }
+
+            drawSimulation();
+            
+            if (isRunning) {
+                requestAnimationFrame(animateLoop);
+            }
+        }
+
+        // --- 按鈕事件處理 ---
+        
+        function updateButtonState() {
+            if (isRunning) {
+                btnStart.textContent = "⏸ 暫停";
+                btnStart.classList.add('paused');
+            } else {
+                btnStart.textContent = accumulationFactor >= 1.0 ? "完成 (已滿)" : "▶ 繼續";
+                if(accumulationFactor === 0) btnStart.textContent = "▶ 開始累積";
+                btnStart.classList.remove('paused');
+            }
+        }
+
+        btnStart.addEventListener('click', () => {
+            if (accumulationFactor >= 1.0) return; 
+            
+            isRunning = !isRunning;
+            updateButtonState();
+            if (isRunning) animateLoop();
+        });
+
+        btnReset.addEventListener('click', () => {
+            isRunning = false;
+            accumulationFactor = 0;
+            updateButtonState();
+            drawSimulation();
+            doseChart.data.datasets[0].data = [];
+            doseChart.data.datasets[1].data = [];
+            doseChart.update();
+        });
+
+        // 滑桿事件
+        tumorSlider.addEventListener('input', updateState);
+        energySlider.addEventListener('input', updateState);
+
+        // --- Chart.js 圖表計算與繪製 ---
+        
+        function getXrayDose(depth) {
+            let buildup = depth < 1.5 ? (0.6 + (depth/1.5)*0.4) : 1;
+            let decay = Math.exp(-0.06 * (depth - 1.5));
+            if (depth < 1.5) decay = 1;
+            let invSquare = Math.pow(100 / (100 + depth), 2);
+            return buildup * decay * invSquare * 100;
+        }
+
+        function getProtonDose(depth, peakDepth) {
+            const baseDose = 30;
+            const sigma = 0.6; 
+            const peakHeight = 70;
+            
+            let gaussian = peakHeight * Math.exp(-Math.pow(depth - peakDepth, 2) / (2 * sigma * sigma));
+            
+            if (depth > peakDepth + sigma * 3) gaussian = 0;
+            if (depth > peakDepth + 0.5) gaussian *= 0.1; 
+
+            let slope = (depth / peakDepth) * 10;
+            if (depth > peakDepth) slope = 10;
+
+            let total = baseDose + slope + gaussian;
+            if (depth > peakDepth + 1) return 0;
+            return total;
+        }
+
+        const ctxChart = document.getElementById('doseChart').getContext('2d');
+        const chartLabels = [];
+        for(let i=0; i<=MAX_DEPTH_CM; i+=0.1) chartLabels.push(i.toFixed(1));
+
+        const doseChart = new Chart(ctxChart, {
+            type: 'line',
+            data: {
+                labels: chartLabels,
+                datasets: [
+                    {
+                        label: '傳統 X 光',
+                        data: [],
+                        borderColor: '#3498db',
+                        borderWidth: 2,
+                        pointRadius: 0,
+                        tension: 0.4
+                    },
+                    {
+                        label: '質子束 (布拉格峰)',
+                        data: [],
+                        borderColor: '#e74c3c',
+                        borderWidth: 2,
+                        pointRadius: 0,
+                        tension: 0.1
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: { duration: 1000 },
+                scales: {
+                    x: { title: { display: true, text: '深度 (cm)' } },
+                    y: { title: { display: true, text: '相對劑量 (%)' }, min: 0, max: 110 }
+                }
+            }
+        });
+
+        btnCalculate.addEventListener('click', () => {
+            const peakDepth = parseFloat(energySlider.value);
+            
+            const xrayData = chartLabels.map(d => getXrayDose(parseFloat(d)));
+            const protonData = chartLabels.map(d => getProtonDose(parseFloat(d), peakDepth));
+
+            doseChart.data.datasets[0].data = xrayData;
+            doseChart.data.datasets[1].data = protonData;
+            doseChart.update();
+        });
+
+        resizeCanvas();
+        updateState();
+
+    </script>
+</body>
+</html>
